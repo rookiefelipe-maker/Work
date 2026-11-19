@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161614">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Actividades">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Registro de actividades</title>
+<style>
+:root{--bg:#161614;--card:#222220;--tx:#efeee9;--mut:#9a988f;--bd:#363632;--ac:#5fb8a0;--red:#e5776a;color-scheme:dark;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 16px}
+h2{font-size:16px;margin:28px 0 10px}
+.row{display:flex;gap:8px}
+textarea{width:100%;min-height:110px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;resize:vertical;margin:8px 0}
+input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:9px 14px;border-radius:10px}
+button.p{background:var(--ac);border-color:var(--ac);color:#0e1512;font-weight:600}
+button.stop{background:var(--red);border-color:var(--red);color:#1a0b09;font-weight:600}
+button.danger{color:var(--red);border-color:var(--red)}
+button.g{border:0;background:none;color:var(--mut);padding:4px 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;display:flex;flex-direction:column;border-left:6px solid var(--c)}
+#list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:14px}
+#list .empty{grid-column:1/-1}
+.card button:not(.p):not(.stop){font-size:13px;padding:6px 10px}
+.top{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.name{font-weight:600;word-break:break-word}
+.sub{color:var(--mut);font-size:13px}
+.live{color:var(--ac);font-weight:600}
+details{margin-top:8px}
+summary{cursor:pointer;color:var(--mut);font-size:13px}
+.ses{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;border-top:1px solid var(--bd);margin-top:4px;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+canvas{width:100%;height:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
+.empty{color:var(--mut);text-align:center;padding:24px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Registro de actividades</h1>
+<div class="row">
+  <input id="nm" placeholder="Nueva actividad (ej: Video de cumpleaños)" maxlength="80">
+  <button class="p" id="add">Agregar</button>
+  <button id="showbulk">Agregar varias</button>
+</div>
+<div id="bulkbox" hidden style="margin-top:10px">
+  <textarea id="bulk" placeholder="Una actividad por línea:&#10;Escoger clips&#10;Buscar canción&#10;Editar video"></textarea>
+  <button class="p" id="addbulk">Agregar todas</button>
+</div>
+<div id="list"></div>
+
+<h2>Reporte</h2>
+<div class="row" style="flex-wrap:wrap">
+  <button class="p" id="gen">Generar imagen</button>
+  <button id="dl">Descargar PNG</button>
+  <button class="g" id="clr">Borrar todo el historial</button>
+</div>
+<div class="scroll" style="margin-top:12px"><canvas id="cv" width="1000" height="200"></canvas></div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const COLORS=["#5fb8a0","#e8a04a","#7aa2e0","#e07a90","#a98be0","#8fcf5a","#e3c453","#55bfd0"];
+const col=a=>COLORS[S.acts.indexOf(a)%COLORS.length];
+let S={acts:[],sess:[]};
+try{const r=localStorage.getItem("regact");if(r)S=JSON.parse(r)}catch(e){}
+function save(){try{localStorage.setItem("regact",JSON.stringify(S))}catch(e){}}
+const uid=()=>Math.random().toString(36).slice(2,9);
+const fD=ms=>{let s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return h?`${h} h ${m} min`:m?`${m} min ${s} s`:`${s} s`};
+const fT=t=>new Date(t).toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const fDay=t=>new Date(t).toLocaleDateString("es",{day:"numeric",month:"short"});
+const fDT=t=>fDay(t)+" "+fT(t);
+const dur=s=>(s.e||Date.now())-s.s;
+const tot=a=>S.sess.filter(s=>s.a===a.id).reduce((n,s)=>n+dur(s),0);
+const run=a=>S.sess.find(s=>s.a===a.id&&!s.e);
+
+function stopAll(){S.sess.forEach(s=>{if(!s.e)s.e=Date.now()})}
+function toggle(id){const a=S.acts.find(x=>x.id===id);if(run(a)){stopAll()}else{stopAll();S.sess.push({id:uid(),a:id,s:Date.now(),e:null})}save();render()}
+function addAct(){const v=$("#nm").value.trim();if(!v)return;S.acts.push({id:uid(),n:v,c:COLORS[S.acts.length%COLORS.length]});$("#nm").value="";save();render()}
+function addBulk(){const ls=$("#bulk").value.split("\n").map(l=>l.replace(/^\s*(?:[-•*]|\d+[.)])\s*/,"").trim()).filter(Boolean);if(!ls.length)return;ls.forEach(n=>S.acts.push({id:uid(),n:n.slice(0,80),c:COLORS[S.acts.length%COLORS.length]}));$("#bulk").value="";$("#bulkbox").hidden=true;save();render()}
+function fin(id){const a=S.acts.find(x=>x.id===id);if(!a)return;if(!a.d){S.sess.forEach(s=>{if(s.a===id&&!s.e)s.e=Date.now()});a.d=Date.now()}else delete a.d;save();render()}
+function delAct(id){if(!confirm("¿Eliminar la actividad y sus registros?"))return;S.acts=S.acts.filter(a=>a.id!==id);S.sess=S.sess.filter(s=>s.a!==id);save();render()}
+function delSes(id){S.sess=S.sess.filter(s=>s.id!==id);save();render()}
+
+function render(){
+  const L=$("#list");
+  if(!S.acts.length){L.innerHTML='<div class="empty">Agrega tu primera actividad arriba.</div>';return}
+  L.innerHTML=[...S.acts].sort((x,y)=>(x.d?1:0)-(y.d?1:0)).map(a=>{
+    const r=run(a),ss=S.sess.filter(s=>s.a===a.id).sort((x,y)=>y.s-x.s);
+    return `<div class="card" style="--c:${col(a)};${a.d?'opacity:.6':''}">
+      <div class="top"><div><div class="name">${a.d?'✓ ':''}${esc(a.n)}</div>
+      <div class="sub" data-t="${a.id}">${r?'<span class="live">● Trabajando · </span>':''}${a.d?'Finalizada el '+fDT(a.d)+' · ':''}Total: ${fD(tot(a))} · ${ss.length} sesión(es)</div></div>
+      ${a.d?'':`<button class="${r?'stop':'p'}" onclick="toggle('${a.id}')">${r?'Detener':'Iniciar'}</button>`}</div>
+      ${ss.length?`<details><summary>Ver registros</summary>${ss.map(s=>`<div class="ses"><span>${fDT(s.s)} → ${s.e?fT(s.e):"en curso"} · ${fD(dur(s))}</span><button class="g" onclick="delSes('${s.id}')">✕</button></div>`).join("")}</details>`:""}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:auto;padding-top:10px"><button onclick="fin('${a.id}')">${a.d?'Reabrir':'Finalizar'}</button><button class="danger" onclick="delAct('${a.id}')">Eliminar</button></div></div>`}).join("");
+}
+function esc(t){return t.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+setInterval(()=>{S.acts.forEach(a=>{const e=document.querySelector(`[data-t="${a.id}"]`);if(e&&run(a))e.innerHTML=`<span class="live">● Trabajando · </span>Total: ${fD(tot(a))} · ${S.sess.filter(s=>s.a===a.id).length} sesión(es)`})},1000);
+
+function report(){
+  const cv=$("#cv"),x=cv.getContext("2d"),acts=S.acts.filter(a=>S.sess.some(s=>s.a===a.id));
+  const W=1000,LM=200,RM=130,RH=46,top=90,H=top+acts.length*RH+60;
+  cv.width=W;cv.height=Math.max(H,160);
+  x.fillStyle="#222220";x.fillRect(0,0,W,cv.height);
+  x.fillStyle="#efeee9";x.font="bold 24px system-ui,sans-serif";x.fillText("Reporte de actividades",24,40);
+  if(!acts.length){x.font="16px system-ui,sans-serif";x.fillStyle="#9a988f";x.fillText("Aún no hay sesiones registradas.",24,80);return}
+  const ss=S.sess,t0=Math.min(...ss.map(s=>s.s)),t1=Math.max(...ss.map(s=>s.e||Date.now())),span=Math.max(t1-t0,1000);
+  x.font="14px system-ui,sans-serif";x.fillStyle="#9a988f";
+  x.fillText(`${fDT(t0)}  →  ${fDT(t1)}   ·   Tiempo total: ${fD(ss.reduce((n,s)=>n+dur(s),0))}`,24,64);
+  const cw=W-LM-RM,px=t=>LM+(t-t0)/span*cw;
+  // ticks
+  for(let i=0;i<=5;i++){const t=t0+span*i/5,xx=LM+cw*i/5;x.strokeStyle="#363632";x.beginPath();x.moveTo(xx,top-6);x.lineTo(xx,top+acts.length*RH);x.stroke();
+    x.fillStyle="#9a988f";x.font="12px system-ui,sans-serif";x.textAlign=i==5?"right":i==0?"left":"center";
+    x.fillText(span>864e5?fDay(t)+" "+fT(t).slice(0,5):fT(t).slice(0,5),xx,top+acts.length*RH+20)}
+  x.textAlign="left";
+  acts.forEach((a,i)=>{const y=top+i*RH;
+    x.fillStyle="#efeee9";x.font="14px system-ui,sans-serif";let n=a.n;while(x.measureText(n).width>LM-34&&n.length>3)n=n.slice(0,-2);if(n!==a.n)n+="…";
+    x.fillText(n,24,y+RH/2+5);
+    x.fillStyle="#9a988f";x.textAlign="right";x.fillText(fD(tot(a)),W-16,y+RH/2+5);x.textAlign="left";
+    x.fillStyle=col(a);
+    S.sess.filter(s=>s.a===a.id).forEach(s=>{const x1=px(s.s),w=Math.max(px(s.e||Date.now())-x1,3);x.fillRect(x1,y+10,w,RH-20)})});
+  x.fillStyle="#9a988f";x.font="12px system-ui,sans-serif";x.fillText("Cada barra es una sesión de trabajo.",24,cv.height-14);
+}
+$("#gen").onclick=report;
+$("#dl").onclick=()=>{report();const l=document.createElement("a");l.download="reporte-actividades.png";l.href=$("#cv").toDataURL("image/png");l.click()};
+$("#clr").onclick=()=>{if(confirm("¿Borrar todas las sesiones registradas? Las actividades se mantienen.")){S.sess=[];save();render();report()}};
+$("#add").onclick=addAct;
+$("#addbulk").onclick=addBulk;
+$("#showbulk").onclick=()=>{const b=$("#bulkbox");b.hidden=!b.hidden;if(!b.hidden)$("#bulk").focus()};
+$("#nm").addEventListener("keydown",e=>{if(e.key==="Enter")addAct()});
+render();report();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+</script>
+</body>
+</html>
