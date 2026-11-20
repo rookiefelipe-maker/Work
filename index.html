@@ -45,13 +45,15 @@ dialog{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-
 dialog::backdrop{background:rgba(0,0,0,.65)}
 dialog label{display:block;font-size:13px;color:var(--mut);margin-top:12px}
 dialog input{width:100%;margin-top:4px}
+dialog input[type=checkbox]{width:auto;margin:0 10px 0 0;accent-color:var(--ac)}
+select{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit}
 canvas{width:100%;height:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
 .empty{color:var(--mut);text-align:center;padding:24px 0}
 </style>
 </head>
 <body>
 <main>
-<h1>Registro de actividades</h1>
+<div class="top" style="margin-bottom:16px"><h1 style="margin:0">Registro de actividades</h1><button id="newday">Nuevo día</button></div>
 <div class="row">
   <input id="nm" placeholder="Nueva actividad (ej: Video de cumpleaños)" maxlength="80">
   <button class="p" id="add">Agregar</button>
@@ -70,6 +72,18 @@ canvas{width:100%;height:auto;border:1px solid var(--bd);border-radius:12px;back
   <button class="g" id="clr">Borrar todo el historial</button>
 </div>
 <div class="scroll" style="margin-top:12px"><canvas id="cv" width="1000" height="200"></canvas></div>
+
+<section id="hist" hidden>
+  <h2>Días anteriores</h2>
+  <div class="row" style="flex-wrap:wrap"><select id="hsel"></select><button id="hdl">Descargar PNG</button><button class="danger" id="hdel">Eliminar día</button></div>
+  <div class="scroll" style="margin-top:12px"><canvas id="cv2" width="1000" height="200"></canvas></div>
+</section>
+<dialog id="dlgN">
+  <div style="font-weight:600">Empezar un nuevo día</div>
+  <p class="sub" style="margin:8px 0 0">El reporte de hoy se guarda en “Días anteriores” y los registros de tiempo se reinician.</p>
+  <label style="display:flex;align-items:center;color:var(--tx);font-size:14px;margin-top:14px"><input type="checkbox" id="keep" checked>Conservar las actividades sin finalizar (con tiempo en cero)</label>
+  <div class="row" style="margin-top:16px;justify-content:flex-end"><button id="nNo">Cancelar</button><button class="p" id="nOk">Empezar nuevo día</button></div>
+</dialog>
 <dialog id="dlg">
   <div style="font-weight:600">Editar registro</div>
   <div class="sub" id="eName"></div>
@@ -85,6 +99,7 @@ const COLORS=["#5fb8a0","#e8a04a","#7aa2e0","#e07a90","#a98be0","#8fcf5a","#e3c4
 const col=a=>COLORS[S.acts.indexOf(a)%COLORS.length];
 let S={acts:[],sess:[]};
 try{const r=localStorage.getItem("regact");if(r)S=JSON.parse(r)}catch(e){}
+S.hist=S.hist||[];
 function save(){try{localStorage.setItem("regact",JSON.stringify(S))}catch(e){}}
 const uid=()=>Math.random().toString(36).slice(2,9);
 const fD=ms=>{let s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return h?`${h} h ${m} min`:m?`${m} min ${s} s`:`${s} s`};
@@ -118,12 +133,18 @@ function render(){
 function esc(t){return t.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 setInterval(()=>{S.acts.forEach(a=>{const e=document.querySelector(`[data-t="${a.id}"]`);if(e&&run(a))e.innerHTML=`<span class="live">● Trabajando · </span>Total: ${fD(tot(a))} · ${S.sess.filter(s=>s.a===a.id).length} sesión(es)`})},1000);
 
-function report(){
-  const cv=$("#cv"),x=cv.getContext("2d"),acts=S.acts.filter(a=>S.sess.some(s=>s.a===a.id));
+let CVS="#cv",RT="Reporte de actividades";
+function report(h){
+  if(!h)return drawReport();
+  const A=S.acts,B=S.sess;S.acts=h.acts;S.sess=h.sess;CVS="#cv2";RT="Reporte · "+h.label;
+  try{drawReport()}finally{S.acts=A;S.sess=B;CVS="#cv";RT="Reporte de actividades"}
+}
+function drawReport(){
+  const cv=$(CVS),x=cv.getContext("2d"),acts=S.acts.filter(a=>S.sess.some(s=>s.a===a.id));
   const W=1000,LM=200,RM=130,RH=46,top=90,H=top+acts.length*RH+60;
   cv.width=W;cv.height=Math.max(H,160);
   x.fillStyle="#222220";x.fillRect(0,0,W,cv.height);
-  x.fillStyle="#efeee9";x.font="bold 24px system-ui,sans-serif";x.fillText("Reporte de actividades",24,40);
+  x.fillStyle="#efeee9";x.font="bold 24px system-ui,sans-serif";x.fillText(RT,24,40);
   if(!acts.length){x.font="16px system-ui,sans-serif";x.fillStyle="#9a988f";x.fillText("Aún no hay sesiones registradas.",24,80);return}
   const ss=S.sess,t0=Math.min(...ss.map(s=>s.s)),t1=Math.max(...ss.map(s=>s.e||Date.now())),span=Math.max(t1-t0,1000);
   x.font="14px system-ui,sans-serif";x.fillStyle="#9a988f";
@@ -154,14 +175,38 @@ $("#eOk").onclick=()=>{
   if(b!==null&&(isNaN(b)||b<=a)){alert("La hora de fin debe ser posterior al inicio.");return}
   if(b===null&&S.sess.some(x=>!x.e&&x.id!==s.id)){alert("Ya hay otra sesión en curso. Ponle hora de fin a este registro.");return}
   s.s=a;s.e=b;save();$("#dlg").close();render();report()};
-$("#gen").onclick=report;
+let hSel=null;
+function renderHist(){
+  $("#hist").hidden=!S.hist.length;
+  if(!S.hist.length){hSel=null;return}
+  if(!S.hist.some(h=>h.id===hSel))hSel=S.hist[S.hist.length-1].id;
+  $("#hsel").innerHTML=[...S.hist].reverse().map(h=>`<option value="${h.id}"${h.id===hSel?" selected":""}>${esc(h.label)} · ${fD(h.sess.reduce((n,s)=>n+((s.e||Date.now())-s.s),0))}</option>`).join("");
+  drawH();
+}
+function drawH(){const h=S.hist.find(x=>x.id===hSel);if(h)report(h)}
+$("#hsel").onchange=e=>{hSel=e.target.value;drawH()};
+$("#hdl").onclick=()=>{const h=S.hist.find(x=>x.id===hSel);if(!h)return;drawH();const l=document.createElement("a");l.download="reporte-"+h.label.replace(/[^a-zA-Z0-9áéíóúñ]+/g,"-")+".png";l.href=$("#cv2").toDataURL("image/png");l.click()};
+$("#hdel").onclick=()=>{if(!confirm("¿Eliminar este día del historial?"))return;S.hist=S.hist.filter(h=>h.id!==hSel);hSel=null;save();renderHist()};
+$("#newday").onclick=()=>{$("#keep").checked=true;$("#dlgN").showModal()};
+$("#nNo").onclick=()=>$("#dlgN").close();
+$("#nOk").onclick=()=>{
+  stopAll();
+  if(S.sess.length){
+    S.hist.push({id:uid(),label:new Date(Math.min(...S.sess.map(s=>s.s))).toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long",year:"numeric"}),acts:JSON.parse(JSON.stringify(S.acts)),sess:JSON.parse(JSON.stringify(S.sess))});
+    hSel=null;
+  }
+  S.acts=$("#keep").checked?S.acts.filter(a=>!a.d).map(a=>({id:a.id,n:a.n})):[];
+  S.sess=[];save();$("#dlgN").close();render();report();renderHist();
+  $("#bulkbox").hidden=false;$("#bulk").focus();
+};
+$("#gen").onclick=()=>report();
 $("#dl").onclick=()=>{report();const l=document.createElement("a");l.download="reporte-actividades.png";l.href=$("#cv").toDataURL("image/png");l.click()};
 $("#clr").onclick=()=>{if(confirm("¿Borrar todas las sesiones registradas? Las actividades se mantienen.")){S.sess=[];save();render();report()}};
 $("#add").onclick=addAct;
 $("#addbulk").onclick=addBulk;
 $("#showbulk").onclick=()=>{const b=$("#bulkbox");b.hidden=!b.hidden;if(!b.hidden)$("#bulk").focus()};
 $("#nm").addEventListener("keydown",e=>{if(e.key==="Enter")addAct()});
-render();report();
+render();report();renderHist();
 if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
 </script>
 </body>
