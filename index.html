@@ -140,28 +140,64 @@ function report(h){
   try{drawReport()}finally{S.acts=A;S.sess=B;CVS="#cv";RT="Reporte de actividades"}
 }
 function drawReport(){
-  const cv=$(CVS),x=cv.getContext("2d"),acts=S.acts.filter(a=>S.sess.some(s=>s.a===a.id));
-  const W=1000,LM=200,RM=130,RH=46,top=90,H=top+acts.length*RH+60;
-  cv.width=W;cv.height=Math.max(H,160);
-  x.fillStyle="#222220";x.fillRect(0,0,W,cv.height);
-  x.fillStyle="#efeee9";x.font="bold 24px system-ui,sans-serif";x.fillText(RT,24,40);
-  if(!acts.length){x.font="16px system-ui,sans-serif";x.fillStyle="#9a988f";x.fillText("Aún no hay sesiones registradas.",24,80);return}
-  const ss=S.sess,t0=Math.min(...ss.map(s=>s.s)),t1=Math.max(...ss.map(s=>s.e||Date.now())),span=Math.max(t1-t0,1000);
-  x.font="14px system-ui,sans-serif";x.fillStyle="#9a988f";
-  x.fillText(`${fDT(t0)}  →  ${fDT(t1)}   ·   Tiempo total: ${fD(ss.reduce((n,s)=>n+dur(s),0))}`,24,64);
+  const cv=$(CVS),ss=S.sess,acts=S.acts.filter(a=>ss.some(s=>s.a===a.id));
+  const W=1000,P=24,LM=200,RM=130,RH=46,top=96,rowH=28,headH=46,gap=16;
+  const BG="#222220",TX="#efeee9",MU="#9a988f",LN="#363632";
+  const F=(z,b)=>(b?"bold ":"")+z+"px system-ui,sans-serif";
+  const y0=top+acts.length*RH+52;
+  let H=160;
+  if(acts.length){H=y0+34+40;acts.forEach(a=>{H+=headH+ss.filter(s=>s.a===a.id).length*rowH+gap})}
+  cv.width=W;cv.height=H;
+  const x=cv.getContext("2d");
+  const fit=(t,m)=>{while(x.measureText(t).width>m&&t.length>3)t=t.slice(0,-2);return t};
+  x.fillStyle=BG;x.fillRect(0,0,W,H);
+  x.textAlign="left";x.fillStyle=TX;x.font=F(24,1);x.fillText(RT,P,40);
+  if(!acts.length){x.font=F(16);x.fillStyle=MU;x.fillText("Aún no hay sesiones registradas.",P,80);return}
+  const t0=Math.min(...ss.map(s=>s.s)),t1=Math.max(...ss.map(s=>s.e||Date.now())),span=Math.max(t1-t0,1000);
+  x.font=F(14);x.fillStyle=MU;
+  x.fillText(fDT(t0)+"  →  "+fDT(t1)+"   ·   Tiempo total: "+fD(ss.reduce((n,s)=>n+dur(s),0)),P,64);
+  // línea de tiempo general
   const cw=W-LM-RM,px=t=>LM+(t-t0)/span*cw;
-  // ticks
-  for(let i=0;i<=5;i++){const t=t0+span*i/5,xx=LM+cw*i/5;x.strokeStyle="#363632";x.beginPath();x.moveTo(xx,top-6);x.lineTo(xx,top+acts.length*RH);x.stroke();
-    x.fillStyle="#9a988f";x.font="12px system-ui,sans-serif";x.textAlign=i==5?"right":i==0?"left":"center";
-    x.fillText(span>864e5?fDay(t)+" "+fT(t).slice(0,5):fT(t).slice(0,5),xx,top+acts.length*RH+20)}
+  for(let i=0;i<=5;i++){
+    const t=t0+span*i/5,xx=LM+cw*i/5;
+    x.strokeStyle=LN;x.beginPath();x.moveTo(xx,top-6);x.lineTo(xx,top+acts.length*RH);x.stroke();
+    x.fillStyle=MU;x.font=F(12);x.textAlign=i==5?"right":i==0?"left":"center";
+    x.fillText(span>864e5?fDay(t)+" "+fT(t).slice(0,5):fT(t).slice(0,5),xx,top+acts.length*RH+20);
+  }
   x.textAlign="left";
-  acts.forEach((a,i)=>{const y=top+i*RH;
-    x.fillStyle="#efeee9";x.font="14px system-ui,sans-serif";let n=a.n;while(x.measureText(n).width>LM-34&&n.length>3)n=n.slice(0,-2);if(n!==a.n)n+="…";
-    x.fillText(n,24,y+RH/2+5);
-    x.fillStyle="#9a988f";x.textAlign="right";x.fillText(fD(tot(a)),W-16,y+RH/2+5);x.textAlign="left";
+  acts.forEach((a,i)=>{
+    const y=top+i*RH;
+    x.font=F(14);x.fillStyle=TX;x.fillText(fit(a.n,LM-34),P,y+RH/2+5);
+    x.fillStyle=MU;x.textAlign="right";x.fillText(fD(tot(a)),W-16,y+RH/2+5);x.textAlign="left";
     x.fillStyle=col(a);
-    S.sess.filter(s=>s.a===a.id).forEach(s=>{const x1=px(s.s),w=Math.max(px(s.e||Date.now())-x1,3);x.fillRect(x1,y+10,w,RH-20)})});
-  x.fillStyle="#9a988f";x.font="12px system-ui,sans-serif";x.fillText("Cada barra es una sesión de trabajo.",24,cv.height-14);
+    ss.filter(s=>s.a===a.id).forEach(s=>{const x1=px(s.s);x.fillRect(x1,y+10,Math.max(px(s.e||Date.now())-x1,3),RH-20)});
+  });
+  // detalle por actividad
+  let y=y0;
+  x.fillStyle=TX;x.font=F(18,1);x.fillText("Detalle por actividad",P,y+8);
+  y+=34;
+  acts.forEach(a=>{
+    const list=ss.filter(s=>s.a===a.id).sort((m,n)=>m.s-n.s),h=headH+list.length*rowH;
+    const mx=Math.max(...list.map(dur),1);
+    x.fillStyle=col(a);x.fillRect(P,y,6,h-6);
+    x.font=F(17,1);x.fillStyle=TX;x.fillText(fit(a.n,560),P+18,y+20);
+    x.font=F(14);x.fillStyle=col(a);x.textAlign="right";
+    x.fillText("Total "+fD(tot(a))+"  ·  "+list.length+(list.length==1?" sesión":" sesiones"),W-P,y+20);
+    x.textAlign="left";
+    list.forEach((s,i)=>{
+      const yy=y+headH+i*rowH;
+      x.fillStyle=MU;x.font=F(13);x.fillText("Sesión "+(i+1),P+18,yy);
+      x.fillStyle=TX;x.font=F(14);
+      const fin=s.e?(fDay(s.s)===fDay(s.e)?fT(s.e):fDT(s.e)):"en curso";
+      x.fillText(fDT(s.s)+"  →  "+fin,P+90,yy);
+      x.fillStyle=LN;x.fillRect(600,yy-11,230,10);
+      x.fillStyle=col(a);x.fillRect(600,yy-11,Math.max(230*dur(s)/mx,3),10);
+      x.fillStyle=TX;x.textAlign="right";x.fillText(fD(dur(s)),W-P,yy);x.textAlign="left";
+    });
+    y+=h+gap;
+    x.strokeStyle=LN;x.beginPath();x.moveTo(P,y-gap/2-3);x.lineTo(W-P,y-gap/2-3);x.stroke();
+  });
+  x.fillStyle=MU;x.font=F(12);x.fillText("Cada barra de la línea de tiempo es una sesión de trabajo.",P,H-14);
 }
 const pad=n=>String(n).padStart(2,"0");
 const toL=t=>{const d=new Date(t);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`};
