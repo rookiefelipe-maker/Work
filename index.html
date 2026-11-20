@@ -69,6 +69,7 @@ canvas{width:100%;height:auto;border:1px solid var(--bd);border-radius:12px;back
 <div class="row" style="flex-wrap:wrap">
   <button class="p" id="gen">Generar imagen</button>
   <button id="dl">Descargar PNG</button>
+  <select id="lang" style="flex:0 0 auto" aria-label="Idioma del reporte"><option value="es">Reporte en español</option><option value="en">Report in English</option></select>
   <button class="g" id="clr">Borrar todo el historial</button>
 </div>
 <div class="scroll" style="margin-top:12px"><canvas id="cv" width="1000" height="200"></canvas></div>
@@ -133,16 +134,22 @@ function render(){
 function esc(t){return t.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 setInterval(()=>{S.acts.forEach(a=>{const e=document.querySelector(`[data-t="${a.id}"]`);if(e&&run(a))e.innerHTML=`<span class="live">● Trabajando · </span>Total: ${fD(tot(a))} · ${S.sess.filter(s=>s.a===a.id).length} sesión(es)`})},1000);
 
-let CVS="#cv",RT="Reporte de actividades";
+let CVS="#cv",RT=null,LANG="es";
+try{LANG=localStorage.getItem("replang")==="en"?"en":"es"}catch(e){}
 function report(h){
   if(!h)return drawReport();
-  const A=S.acts,B=S.sess;S.acts=h.acts;S.sess=h.sess;CVS="#cv2";RT="Reporte · "+h.label;
-  try{drawReport()}finally{S.acts=A;S.sess=B;CVS="#cv";RT="Reporte de actividades"}
+  const A=S.acts,B=S.sess;S.acts=h.acts;S.sess=h.sess;CVS="#cv2";RT=(LANG==="en"?"Report · ":"Reporte · ")+new Date(Math.min(...h.sess.map(q=>q.s))).toLocaleDateString(LANG,{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  try{drawReport()}finally{S.acts=A;S.sess=B;CVS="#cv";RT=null}
 }
 function drawReport(){
   const cv=$(CVS),ss=S.sess,acts=S.acts.filter(a=>ss.some(s=>s.a===a.id));
   const W=1000,P=24,LM=200,RM=130,RH=46,top=96,rowH=28,headH=46,gap=16;
   const BG="#222220",TX="#efeee9",MU="#9a988f",LN="#363632";
+  const L=LANG==="en"?{title:"Activity report",empty:"No sessions recorded yet.",tt:"Total time: ",det:"Activity details",tot:"Total ",s1:" session",sn:" sessions",se:"Session ",run:"in progress",foot:"Each bar in the timeline is a work session."}
+    :{title:"Reporte de actividades",empty:"Aún no hay sesiones registradas.",tt:"Tiempo total: ",det:"Detalle por actividad",tot:"Total ",s1:" sesión",sn:" sesiones",se:"Sesión ",run:"en curso",foot:"Cada barra de la línea de tiempo es una sesión de trabajo."};
+  const fT=t=>new Date(t).toLocaleTimeString(LANG,{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}),
+    fDay=t=>new Date(t).toLocaleDateString(LANG,{day:"numeric",month:"short"}),
+    fDT=t=>fDay(t)+" "+fT(t);
   const F=(z,b)=>(b?"bold ":"")+z+"px system-ui,sans-serif";
   const y0=top+acts.length*RH+52;
   let H=160;
@@ -151,11 +158,11 @@ function drawReport(){
   const x=cv.getContext("2d");
   const fit=(t,m)=>{while(x.measureText(t).width>m&&t.length>3)t=t.slice(0,-2);return t};
   x.fillStyle=BG;x.fillRect(0,0,W,H);
-  x.textAlign="left";x.fillStyle=TX;x.font=F(24,1);x.fillText(RT,P,40);
-  if(!acts.length){x.font=F(16);x.fillStyle=MU;x.fillText("Aún no hay sesiones registradas.",P,80);return}
+  x.textAlign="left";x.fillStyle=TX;x.font=F(24,1);x.fillText(RT||L.title,P,40);
+  if(!acts.length){x.font=F(16);x.fillStyle=MU;x.fillText(L.empty,P,80);return}
   const t0=Math.min(...ss.map(s=>s.s)),t1=Math.max(...ss.map(s=>s.e||Date.now())),span=Math.max(t1-t0,1000);
   x.font=F(14);x.fillStyle=MU;
-  x.fillText(fDT(t0)+"  →  "+fDT(t1)+"   ·   Tiempo total: "+fD(ss.reduce((n,s)=>n+dur(s),0)),P,64);
+  x.fillText(fDT(t0)+"  →  "+fDT(t1)+"   ·   "+L.tt+fD(ss.reduce((n,s)=>n+dur(s),0)),P,64);
   // línea de tiempo general
   const cw=W-LM-RM,px=t=>LM+(t-t0)/span*cw;
   for(let i=0;i<=5;i++){
@@ -174,7 +181,7 @@ function drawReport(){
   });
   // detalle por actividad
   let y=y0;
-  x.fillStyle=TX;x.font=F(18,1);x.fillText("Detalle por actividad",P,y+8);
+  x.fillStyle=TX;x.font=F(18,1);x.fillText(L.det,P,y+8);
   y+=34;
   acts.forEach(a=>{
     const list=ss.filter(s=>s.a===a.id).sort((m,n)=>m.s-n.s),h=headH+list.length*rowH;
@@ -182,13 +189,13 @@ function drawReport(){
     x.fillStyle=col(a);x.fillRect(P,y,6,h-6);
     x.font=F(17,1);x.fillStyle=TX;x.fillText(fit(a.n,560),P+18,y+20);
     x.font=F(14);x.fillStyle=col(a);x.textAlign="right";
-    x.fillText("Total "+fD(tot(a))+"  ·  "+list.length+(list.length==1?" sesión":" sesiones"),W-P,y+20);
+    x.fillText(L.tot+fD(tot(a))+"  ·  "+list.length+(list.length==1?L.s1:L.sn),W-P,y+20);
     x.textAlign="left";
     list.forEach((s,i)=>{
       const yy=y+headH+i*rowH;
-      x.fillStyle=MU;x.font=F(13);x.fillText("Sesión "+(i+1),P+18,yy);
+      x.fillStyle=MU;x.font=F(13);x.fillText(L.se+(i+1),P+18,yy);
       x.fillStyle=TX;x.font=F(14);
-      const fin=s.e?(fDay(s.s)===fDay(s.e)?fT(s.e):fDT(s.e)):"en curso";
+      const fin=s.e?(fDay(s.s)===fDay(s.e)?fT(s.e):fDT(s.e)):L.run;
       x.fillText(fDT(s.s)+"  →  "+fin,P+90,yy);
       x.fillStyle=LN;x.fillRect(600,yy-11,230,10);
       x.fillStyle=col(a);x.fillRect(600,yy-11,Math.max(230*dur(s)/mx,3),10);
@@ -197,7 +204,7 @@ function drawReport(){
     y+=h+gap;
     x.strokeStyle=LN;x.beginPath();x.moveTo(P,y-gap/2-3);x.lineTo(W-P,y-gap/2-3);x.stroke();
   });
-  x.fillStyle=MU;x.font=F(12);x.fillText("Cada barra de la línea de tiempo es una sesión de trabajo.",P,H-14);
+  x.fillStyle=MU;x.font=F(12);x.fillText(L.foot,P,H-14);
 }
 const pad=n=>String(n).padStart(2,"0");
 const toL=t=>{const d=new Date(t);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`};
@@ -221,7 +228,7 @@ function renderHist(){
 }
 function drawH(){const h=S.hist.find(x=>x.id===hSel);if(h)report(h)}
 $("#hsel").onchange=e=>{hSel=e.target.value;drawH()};
-$("#hdl").onclick=()=>{const h=S.hist.find(x=>x.id===hSel);if(!h)return;drawH();const l=document.createElement("a");l.download="reporte-"+h.label.replace(/[^a-zA-Z0-9áéíóúñ]+/g,"-")+".png";l.href=$("#cv2").toDataURL("image/png");l.click()};
+$("#hdl").onclick=()=>{const h=S.hist.find(x=>x.id===hSel);if(!h)return;drawH();const l=document.createElement("a");l.download=(LANG==="en"?"report-":"reporte-")+new Date(Math.min(...h.sess.map(q=>q.s))).toISOString().slice(0,10)+".png";l.href=$("#cv2").toDataURL("image/png");l.click()};
 $("#hdel").onclick=()=>{if(!confirm("¿Eliminar este día del historial?"))return;S.hist=S.hist.filter(h=>h.id!==hSel);hSel=null;save();renderHist()};
 $("#newday").onclick=()=>{$("#keep").checked=true;$("#dlgN").showModal()};
 $("#nNo").onclick=()=>$("#dlgN").close();
@@ -235,8 +242,10 @@ $("#nOk").onclick=()=>{
   S.sess=[];save();$("#dlgN").close();render();report();renderHist();
   $("#bulkbox").hidden=false;$("#bulk").focus();
 };
+$("#lang").value=LANG;
+$("#lang").onchange=e=>{LANG=e.target.value==="en"?"en":"es";try{localStorage.setItem("replang",LANG)}catch(x){}report();renderHist()};
 $("#gen").onclick=()=>report();
-$("#dl").onclick=()=>{report();const l=document.createElement("a");l.download="reporte-actividades.png";l.href=$("#cv").toDataURL("image/png");l.click()};
+$("#dl").onclick=()=>{report();const l=document.createElement("a");l.download=LANG==="en"?"activity-report.png":"reporte-actividades.png";l.href=$("#cv").toDataURL("image/png");l.click()};
 $("#clr").onclick=()=>{if(confirm("¿Borrar todas las sesiones registradas? Las actividades se mantienen.")){S.sess=[];save();render();report()}};
 $("#add").onclick=addAct;
 $("#addbulk").onclick=addBulk;
